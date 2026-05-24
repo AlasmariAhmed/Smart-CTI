@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% set active = "feeds" %}
+{% block content %}
+
+<div class="page-title">
+  <h1>Feed connectors</h1>
+  <div class="subtitle">Each source runs on its own cadence. Click <span class="mono faint">Run now</span> to ingest immediately.</div>
+</div>
+
+<div class="feeds-grid" id="feeds-grid"></div>
+
+<!-- Danger zone -->
+<section class="danger-zone">
+  <div class="danger-head">
+    <div>
+      <h2>Danger zone</h2>
+      <div class="subtitle">Purge stored IOCs. These actions cannot be undone.</div>
+    </div>
+    <div class="db-size-summary" id="db-size">
+      <span class="skel" style="width:120px"></span>
+    </div>
+  </div>
+
+  <div class="danger-grid">
+    <div class="danger-card">
+      <h3>Rotate stale signal</h3>
+      <p class="hint">Delete indicators not seen in the last N days. Frees space, keeps recent signal.</p>
+      <div class="inline-form">
+        <input id="purge-days" type="number" class="input" min="1" value="30" style="max-width:90px"/>
+        <span class="faint">days</span>
+        <button class="btn btn-warn" data-mode="older_than">Purge older</button>
+      </div>
+    </div>
+
+    <div class="danger-card">
+      <h3>Re-tune cleanup</h3>
+      <p class="hint">After raising your relevance threshold, drop the IOCs that no longer qualify.</p>
+      <div class="inline-form">
+        <span class="faint">score &lt;</span>
+        <input id="purge-score" type="number" class="input" min="0" max="100" value="40" style="max-width:80px"/>
+        <button class="btn btn-warn" data-mode="below_score">Purge low-score</button>
+      </div>
+    </div>
+
+    <div class="danger-card nuclear">
+      <h3>🗑  Wipe everything</h3>
+      <p class="hint">Delete <em>all</em> IOCs, sources, tags, scoring reasons, and feed-run history.</p>
+      <div class="inline-form">
+        <button class="btn btn-danger" data-mode="all">Clear entire database</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Confirmation modal -->
+<div id="purge-modal" class="modal-root hidden">
+  <div class="modal-bg" id="purge-modal-bg"></div>
+  <div class="modal-panel">
+    <header class="modal-head">
+      <div>
+        <div class="modal-sub">Destructive operation</div>
+        <h3 id="purge-modal-title">Confirm purge</h3>
+      </div>
+      <button class="drawer-close" id="purge-modal-close">✕</button>
+    </header>
+    <div class="modal-body">
+      <p id="purge-modal-msg" style="line-height:1.5"></p>
+      <div class="modal-impact" id="purge-modal-impact"></div>
+      <p style="margin-top:18px">Type <code class="confirm-word">DELETE</code> below to authorize:</p>
+      <input id="purge-confirm-input" class="input" placeholder="DELETE" autocomplete="off" style="width:100%; margin-top:8px"/>
+      <div style="display:flex; gap:8px; margin-top:18px; justify-content:flex-end">
+        <button class="btn btn-ghost" id="purge-cancel">Cancel</button>
+        <button class="btn btn-danger" id="purge-confirm" disabled>Permanently delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden toast"><span id="toast-msg"></span></div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .danger-zone {
+    margin-top: 42px;
+    padding: 22px;
+    background: linear-gradient(180deg, rgba(239,68,68,0.04), transparent);
+    border: 1px solid rgba(239,68,68,0.18);
+    border-radius: 14px;
+  }
+  .danger-head {
+    display: flex; align-items: flex-start; gap: 16px;
+    margin-bottom: 18px;
+  }
+  .danger-head h2 {
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 1.1rem; margin: 0;
+    color: var(--score-high);
+  }
+  .danger-head .subtitle { color: var(--text-muted); font-size: 0.84rem; margin-top: 2px; }
+  .db-size-summary {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    padding: 8px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--border-strong);
+  }
+  .danger-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .danger-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .danger-card.nuclear {
+    background: rgba(239, 68, 68, 0.04);
+    border-color: rgba(239, 68, 68, 0.22);
+  }
+  .danger-card h3 {
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 0.95rem;
+    margin: 0;
+  }
+  .danger-card .hint { color: var(--text-muted); font-size: 0.78rem; margin: 0; line-height: 1.5; }
+  .inline-form { display: flex; align-items: center; gap: 8px; margin-top: auto; }
+
+  .btn-warn {
+    background: var(--score-med-bg); color: var(--score-med);
+    border: 1px solid rgba(234,179,8,0.35);
+  }
+  .btn-warn:hover { background: rgba(234,179,8,0.18); }
+  .btn-danger {
+    background: var(--score-high-bg); color: var(--score-high);
+    border: 1px solid rgba(239,68,68,0.35);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.18); }
+  .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Modal */
+  .modal-root {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-root.hidden { display: none; }
+  .modal-bg {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+  }
+  .modal-panel {
+    position: relative;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    width: min(520px, 92vw);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7);
+    animation: modal-in 220ms var(--ease-out);
+  }
+  @keyframes modal-in {
+    from { transform: translateY(20px) scale(0.96); opacity: 0; }
+    to   { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .modal-head {
+    display: flex; align-items: flex-start;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-head h3 {
+    font-family: 'Inter Tight', sans-serif;
+    margin: 0; font-size: 1.05rem;
+    color: var(--score-high);
+  }
+  .modal-sub {
+    font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-faint); margin-bottom: 4px;
+  }
+  .modal-body { padding: 18px 22px 22px; font-size: 0.9rem; color: var(--text); }
+  .modal-impact {
+    margin-top: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.84rem;
+    color: var(--score-high);
+  }
+  .confirm-word {
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--score-high);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+  }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 70;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    padding: 12px 16px;
+    border-radius: 10px;
+    box-shadow: 0 12px 40px -16px rgba(0,0,0,0.5);
+    font-size: 0.86rem;
+    max-width: 360px;
+    animation: toast-in 240ms var(--ease-out);
+  }
+  .toast.hidden { display: none; }
+  .toast.ok { border-color: rgba(52, 211, 153, 0.4); }
+  .toast.err { border-color: rgba(239, 68, 68, 0.4); }
+  @keyframes toast-in {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+</style>
+
+<script>
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtDate(s) { return s ? new Date(s).toLocaleString() : '—'; }
+function num(n) { return new Intl.NumberFormat().format(n); }
+function statusDot(s) {
+  if (!s) return '<span class="status-dot idle"></span>';
+  if (s === 'success') return '<span class="status-dot ok"></span>';
+  if (s === 'error') return '<span class="status-dot err"></span>';
+  return '<span class="status-dot idle"></span>';
+}
+
+async function loadFeeds() {
+  const r = await fetch('/api/feeds');
+  const data = await r.json();
+  const grid = document.getElementById('feeds-grid');
+  grid.innerHTML = '';
+  for (const f of data.feeds) {
+    const lr = f.last_run || {};
+    const card = document.createElement('div');
+    card.className = 'feed-card';
+    card.innerHTML = `
+      <div class="feed-card-head">
+        <div>
+          <div class="feed-card-name">${escapeHTML(f.display_name)}</div>
+          <div class="feed-card-key">${escapeHTML(f.name)}</div>
+        </div>
+        <div class="ml-auto">${statusDot(lr.status)}<span class="faint" style="font-size:0.75rem">${f.enabled ? 'enabled' : 'disabled'}</span></div>
+      </div>
+      <div class="feed-card-meta">
+        <div><div class="label">Cadence</div><div class="value">${f.interval_minutes} min</div></div>
+        <div><div class="label">Status</div><div class="value">${lr.status || '—'}</div></div>
+        <div><div class="label">Last run</div><div class="value" style="font-size:0.7rem">${fmtDate(lr.started_at)}</div></div>
+        <div><div class="label">Pulled / stored</div><div class="value">${lr.iocs_pulled ?? 0} / ${lr.iocs_stored ?? 0}</div></div>
+      </div>
+      <div class="feed-card-actions">
+        <button class="btn btn-primary run-btn" data-name="${f.name}" style="width:100%">Run now</button>
+      </div>`;
+    grid.appendChild(card);
+  }
+  for (const btn of document.querySelectorAll('.run-btn')) {
+    btn.addEventListener('click', async () => {
+      const name = btn.getAttribute('data-name');
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      try {
+        const r = await fetch('/api/feeds/' + name + '/run', { method: 'POST' });
+        const d = await r.json();
+        btn.textContent = `Done · ${d.stored}/${d.pulled}`;
+      } catch (e) { btn.textContent = 'Error'; }
+      setTimeout(() => { loadFeeds(); loadDbSize(); }, 1500);
+    });
+  }
+}
+
+async function loadDbSize() {
+  try {
+    const r = await fetch('/api/admin/db-size');
+    const d = await r.json();
+    document.getElementById('db-size').innerHTML =
+      `<span class="faint">DB:</span> ${num(d.total)} IOCs ` +
+      `<span class="faint">·</span> high <span style="color:var(--score-high)">${num(d.by_score.high)}</span> ` +
+      `<span class="faint">·</span> med <span style="color:var(--score-med)">${num(d.by_score.med)}</span> ` +
+      `<span class="faint">·</span> low <span style="color:var(--text-faint)">${num(d.by_score.low)}</span>`;
+  } catch (e) {}
+}
+
+// --- Purge modal ----------------------------------------------------------
+let pendingPurge = null;
+
+function openPurgeModal(mode) {
+  pendingPurge = { mode };
+  let title, msg, impact;
+
+  if (mode === 'all') {
+    title = 'Wipe entire database';
+    msg = 'This permanently deletes every stored IOC, every source record, every scoring reason, every tag, and the feed-run history.';
+    impact = 'Affects: ALL data in the local store.';
+  } else if (mode === 'older_than') {
+    const days = parseInt(document.getElementById('purge-days').value, 10) || 30;
+    pendingPurge.days = days;
+    title = `Purge IOCs older than ${days} days`;
+    msg = `This permanently deletes every indicator whose <strong>last_seen</strong> is more than ${days} days ago. Sources, reasons, and tags for those IOCs are cascaded.`;
+    impact = `Affects: indicators not seen in the last ${days} days.`;
+  } else if (mode === 'below_score') {
+    const score = parseInt(document.getElementById('purge-score').value, 10) || 40;
+    pendingPurge.score = score;
+    title = `Purge IOCs with score < ${score}`;
+    msg = `This permanently deletes every indicator whose <strong>relevance_score</strong> is below ${score}. Useful after raising your relevance threshold.`;
+    impact = `Affects: indicators with relevance_score &lt; ${score}.`;
+  }
+
+  document.getElementById('purge-modal-title').textContent = title;
+  document.getElementById('purge-modal-msg').innerHTML = msg;
+  document.getElementById('purge-modal-impact').innerHTML = '⚠  ' + impact;
+  document.getElementById('purge-confirm-input').value = '';
+  document.getElementById('purge-confirm').disabled = true;
+  document.getElementById('purge-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('purge-confirm-input').focus(), 60);
+}
+
+function closePurgeModal() {
+  document.getElementById('purge-modal').classList.add('hidden');
+  pendingPurge = null;
+}
+
+async function executePurge() {
+  if (!pendingPurge) return;
+  const body = { ...pendingPurge, confirm: 'DELETE' };
+  const btn = document.getElementById('purge-confirm');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const r = await fetch('/api/admin/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Purge failed');
+    showToast(`Purged <strong>${num(d.deleted_iocs)}</strong> IOC${d.deleted_iocs === 1 ? '' : 's'} (${d.label}).`, 'ok');
+    loadDbSize();
+    loadFeeds();
+  } catch (e) {
+    showToast('Purge failed: ' + e.message, 'err');
+  } finally {
+    btn.textContent = 'Permanently delete';
+    closePurgeModal();
+  }
+}
+
+function showToast(html, cls) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').innerHTML = html;
+  t.className = 'toast ' + (cls || '');
+  setTimeout(() => t.classList.add('hidden'), 4500);
+}
+
+// Wire up
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => openPurgeModal(btn.dataset.mode));
+});
+document.getElementById('purge-modal-bg').addEventListener('click', closePurgeModal);
+document.getElementById('purge-modal-close').addEventListener('click', closePurgeModal);
+document.getElementById('purge-cancel').addEventListener('click', closePurgeModal);
+document.getElementById('purge-confirm-input').addEventListener('input', (e) => {
+  document.getElementById('purge-confirm').disabled = e.target.value !== 'DELETE';
+});
+document.getElementById('purge-confirm-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.value === 'DELETE') executePurge();
+});
+document.getElementById('purge-confirm').addEventListener('click', executePurge);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !document.getElementById('purge-modal').classList.contains('hidden')) {
+    closePurgeModal();
+  }
+});
+
+loadFeeds();
+loadDbSize();
+setInterval(() => { loadFeeds(); loadDbSize(); }, 15000);
+</script>
+{% endblock %}

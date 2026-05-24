@@ -1,0 +1,7 @@
+{
+  "_comment": "ASN numbers of networks you consider relevant for defense — your own ISP/cloud, partner networks, in-region telcos. The scoring engine raises the relevance score of malicious IPs that happen to be hosted in these ASNs (so they appear higher in your triage queue). Fill in YOUR allow-list. NOT used for target enumeration — see SECURITY.md.",
+  "_intended_use": "scoring_filter_only",
+  "asns": {
+    "_example_15169": {"name": "Google LLC (example only — remove and add your real ASNs)", "category": "example"}
+  }
+}

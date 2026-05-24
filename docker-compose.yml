@@ -1,0 +1,33 @@
+# One-command launch:
+#   docker compose up --build
+#   open http://127.0.0.1:8000
+#
+# The DB and editable data files (keywords, ASNs, optional GeoLite2) are mounted
+# from ./data so they survive `docker compose down` and image rebuilds.
+
+services:
+  cti-aggregator:
+    build: .
+    image: cti-aggregator:latest
+    container_name: cti-aggregator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "sqlite:////app/data/cti.db"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      RELEVANCE_SCORE_THRESHOLD: "40"
+      GEOIP_DB_PATH: "/app/data/GeoLite2-Country.mmdb"
+      LOG_LEVEL: "INFO"
+      # Drop a free key from https://otx.alienvault.com/api here (optional)
+      OTX_API_KEY: "${OTX_API_KEY:-}"
+    volumes:
+      # Persist data + tunable JSON files across container restarts
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/stats"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

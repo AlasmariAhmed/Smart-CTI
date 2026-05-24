@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% set active = "keywords" %}
+{% block content %}
+
+<div class="page-title">
+  <h1>Keyword library</h1>
+  <div class="subtitle">
+    These keywords drive the relevance score. Edits take effect immediately;
+    click <span class="mono faint">Rescore stored IOCs</span> to re-run scoring against the existing DB.
+  </div>
+</div>
+
+<div class="toolbar" style="margin-bottom:20px">
+  <div class="faint" style="font-size:0.78rem">
+    Scoring file: <span class="mono">data/relevance_keywords.json</span>
+  </div>
+  <div style="flex:1"></div>
+  <button id="btn-rescore" class="btn btn-primary">Rescore stored IOCs</button>
+</div>
+
+<div id="kw-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap:14px;">
+  <!-- populated by JS -->
+</div>
+
+<div id="rescore-toast" class="hidden" style="position:fixed; bottom:24px; right:24px; background:var(--surface-3); border:1px solid var(--border-strong); padding:12px 16px; border-radius:10px; box-shadow: 0 12px 40px -16px rgba(0,0,0,0.5); z-index:60; font-size:0.84rem;">
+  <span id="rescore-toast-msg"></span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .kw-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex; flex-direction: column;
+  }
+  .kw-card h3 {
+    font-family: 'Inter Tight', sans-serif;
+    font-size: 1rem;
+    margin: 0 0 4px;
+  }
+  .kw-card .hint {
+    color: var(--text-faint); font-size: 0.78rem; margin-bottom: 14px;
+  }
+  .kw-card .pts {
+    display: inline-block;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 5px;
+    margin-left: 8px;
+  }
+  .kw-list {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    min-height: 60px;
+    padding: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    margin-bottom: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .kw-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 4px 4px 10px;
+    background: var(--surface-3);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    transition: border-color 140ms var(--ease-out);
+  }
+  .kw-chip:hover { border-color: var(--accent); }
+  .kw-chip .rm {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-faint);
+    border: 0;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 140ms var(--ease-out);
+  }
+  .kw-chip .rm:hover { background: var(--score-high); color: white; }
+  .kw-add { display: flex; gap: 8px; }
+  .kw-add input {
+    flex: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    outline: none;
+  }
+  .kw-add input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .kw-empty { color: var(--text-faint); font-size: 0.8rem; padding: 8px; }
+</style>
+
+<script>
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let state = { categories: {}, keywords: {} };
+
+async function loadKeywords() {
+  const r = await fetch('/api/keywords');
+  const d = await r.json();
+  state = d;
+  render();
+}
+
+function render() {
+  const grid = document.getElementById('kw-grid');
+  grid.innerHTML = '';
+  for (const [catKey, meta] of Object.entries(state.categories)) {
+    const list = state.keywords[catKey] || [];
+    const card = document.createElement('div');
+    card.className = 'kw-card';
+    const ptsBadge = meta.points > 0 ? `<span class="pts">+${meta.points}${meta.cap ? ` · cap +${meta.cap}` : ''}</span>` : '';
+    card.innerHTML = `
+      <h3>${escapeHTML(meta.label)}${ptsBadge}</h3>
+      <div class="hint">${escapeHTML(meta.hint)}</div>
+      <div class="kw-list" id="list-${catKey}">
+        ${list.length === 0
+          ? '<div class="kw-empty">No keywords yet — add one below.</div>'
+          : list.map(k => `<span class="kw-chip"><span>${escapeHTML(k)}</span><button class="rm" data-cat="${catKey}" data-kw="${escapeHTML(k)}" title="Remove">✕</button></span>`).join('')}
+      </div>
+      <div class="kw-add">
+        <input placeholder="Add a keyword and press Enter…" data-cat="${catKey}"/>
+        <button class="btn btn-primary add-btn" data-cat="${catKey}">Add</button>
+      </div>`;
+    grid.appendChild(card);
+  }
+  // Wire remove buttons
+  for (const btn of document.querySelectorAll('.kw-chip .rm')) {
+    btn.addEventListener('click', () => removeKw(btn.dataset.cat, btn.dataset.kw));
+  }
+  // Wire add buttons + Enter key
+  for (const btn of document.querySelectorAll('.add-btn')) {
+    btn.addEventListener('click', () => {
+      const inp = document.querySelector(`input[data-cat="${btn.dataset.cat}"]`);
+      addKw(btn.dataset.cat, inp.value);
+      inp.value = '';
+    });
+  }
+  for (const inp of document.querySelectorAll('.kw-add input')) {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        addKw(inp.dataset.cat, inp.value);
+        inp.value = '';
+      }
+    });
+  }
+}
+
+async function addKw(category, keyword) {
+  keyword = keyword.trim();
+  if (!keyword) return;
+  const r = await fetch('/api/keywords', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, keyword }),
+  });
+  if (!r.ok) { alert('Failed: ' + r.status); return; }
+  const d = await r.json();
+  state.keywords = d.keywords;
+  render();
+}
+
+async function removeKw(category, keyword) {
+  const r = await fetch(`/api/keywords/${encodeURIComponent(category)}/${encodeURIComponent(keyword)}`, {
+    method: 'DELETE',
+  });
+  if (!r.ok) { alert('Failed: ' + r.status); return; }
+  const d = await r.json();
+  state.keywords = d.keywords;
+  render();
+}
+
+function showToast(msg, ok = true) {
+  const t = document.getElementById('rescore-toast');
+  const m = document.getElementById('rescore-toast-msg');
+  m.innerHTML = msg;
+  t.style.borderColor = ok ? 'rgba(52, 211, 153, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 4500);
+}
+
+document.getElementById('btn-rescore').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  e.target.textContent = 'Rescoring…';
+  try {
+    const r = await fetch('/api/rescore', { method: 'POST' });
+    const d = await r.json();
+    showToast(`Rescored <span class="mono">${d.total_iocs}</span> IOCs — <span class="mono">${d.updated}</span> changed score.`);
+  } catch (err) {
+    showToast('Rescore failed: ' + err.message, false);
+  } finally {
+    e.target.disabled = false;
+    e.target.textContent = 'Rescore stored IOCs';
+  }
+});
+
+loadKeywords();
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block content %}
+
+<div class="page-title">
+  <h1>Threat surface</h1>
+  <div class="subtitle">Aggregated IOCs from public OSINT feeds, scored against your relevance criteria.</div>
+</div>
+
+<!-- Hero stat band -->
+<div class="hero" id="hero">
+  <div class="hero-cell primary">
+    <div class="label">Tracked indicators</div>
+    <div>
+      <div class="hero-num huge" id="stat-total"><span class="skel" style="width:90px"></span></div>
+      <div class="hero-delta" id="stat-24h-delta">— in last 24h</div>
+    </div>
+  </div>
+  <div class="hero-cell">
+    <div class="label">High score · ≥80</div>
+    <div class="hero-num danger" id="stat-high"><span class="skel" style="width:40px"></span></div>
+    <div class="hero-delta">priority queue</div>
+  </div>
+  <div class="hero-cell">
+    <div class="label">Medium · 40–79</div>
+    <div class="hero-num warning" id="stat-med"><span class="skel" style="width:40px"></span></div>
+    <div class="hero-delta">triage</div>
+  </div>
+  <div class="hero-cell">
+    <div class="label">New · 24h</div>
+    <div class="hero-num accent-green" id="stat-24h"><span class="skel" style="width:40px"></span></div>
+    <div class="hero-delta">fresh signal</div>
+  </div>
+  <div class="hero-cell">
+    <div class="label">Top actor</div>
+    <div class="hero-num accent" id="stat-top-actor" style="font-size:1.4rem; line-height:1.3"><span class="skel" style="width:90px"></span></div>
+    <div class="hero-delta" id="stat-top-actor-count">—</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <input id="f-q" class="input grow" placeholder="🔍  Search IOC value (substring)…"/>
+  <select id="f-type" class="select" title="IOC type">
+    <option value="">Any type</option>
+    <option value="ip">IP</option><option value="domain">Domain</option>
+    <option value="url">URL</option><option value="md5">MD5</option>
+    <option value="sha1">SHA1</option><option value="sha256">SHA256</option>
+    <option value="email">Email</option><option value="cve">CVE</option>
+  </select>
+  <select id="f-source" class="select" title="Source">
+    <option value="">Any source</option>
+  </select>
+  <input id="f-keyword" class="input" placeholder="Keyword e.g. APT28" style="max-width:200px" title="Filter by keyword in scoring reasons or raw context"/>
+  <input id="f-min-score" type="number" class="input" placeholder="Min score" min="0" max="100" style="max-width:120px"/>
+  <input id="f-days" type="number" class="input" placeholder="Days back" min="1" style="max-width:120px"/>
+  <button id="btn-apply" class="btn btn-primary">Apply</button>
+  <button id="btn-reset" class="btn btn-ghost">Reset</button>
+  <div style="flex:1"></div>
+  <a id="btn-export-csv"  class="btn btn-ghost btn-icon" title="Export as CSV">CSV</a>
+  <a id="btn-export-json" class="btn btn-ghost btn-icon" title="Export as JSON">JSON</a>
+  <a id="btn-export-stix" class="btn btn-ghost btn-icon" title="Export as STIX 2.1">STIX</a>
+</div>
+
+<!-- IOC table -->
+<div class="card">
+  <table class="t">
+    <thead>
+      <tr>
+        <th style="min-width: 320px">Indicator</th>
+        <th>Type</th>
+        <th>Score</th>
+        <th>Why relevant?</th>
+        <th>Sources</th>
+        <th>Tags</th>
+        <th>Last seen</th>
+      </tr>
+    </thead>
+    <tbody id="iocs-body"></tbody>
+  </table>
+  <div class="pager">
+    <span id="result-count" class="muted">—</span>
+    <div class="ml-auto" style="display:flex; align-items:center; gap:6px">
+      <button id="prev-page" class="pager-btn" title="Previous">‹</button>
+      <span id="page-info" class="mono">page 1</span>
+      <button id="next-page" class="pager-btn" title="Next">›</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div id="drawer" class="drawer-root">
+  <div class="drawer-bg" id="drawer-bg"></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true">
+    <header class="drawer-head">
+      <div>
+        <div class="drawer-sub" id="drawer-sub">Indicator detail</div>
+        <div class="drawer-title" id="drawer-title">—</div>
+      </div>
+      <button class="drawer-close" id="drawer-close" aria-label="Close">✕</button>
+    </header>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+</div>
+{% endblock %}

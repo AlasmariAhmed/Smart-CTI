@@ -1,0 +1,5 @@
+{
+  "_comment": "ISO-2 country codes (e.g., US, GB, DE) whose IP-geolocated IOCs get a score bonus. Lets you flag in-country threats first. Empty by default.",
+  "_intended_use": "scoring_filter_only",
+  "countries": []
+}

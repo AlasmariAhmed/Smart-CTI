@@ -1,0 +1,47 @@
+{
+  "_comment": "Keywords used by the scoring engine to raise the relevance score of attacker IOCs whose context mentions your organization, region, or sector. Case-insensitive substring match against IOC description / advisory body / pulse text. Edit freely via the /keywords UI; no restart needed. Examples are commented out — fill in YOUR org's identifiers.",
+  "_intended_use": "scoring_filter_only",
+  "high_signal": [
+    "Telecom",
+    "Company",
+    "SomeBank"
+  ],
+  "_high_signal_examples": [
+    "YourCompanyName",
+    "YourBrand",
+    "TheirSubsidiary"
+  ],
+  "sector_terms": [
+    "Telecom",
+    "Gas",
+    "Industrial"
+  ],
+  "_sector_terms_examples": [
+    "energy",
+    "oil & gas",
+    "banking",
+    "healthcare",
+    "OT/ICS",
+    "SCADA"
+  ],
+  "region_context": [
+    "MiddleEast",
+    "SomeWhere"
+  ],
+  "_region_context_examples": [
+    "Middle East",
+    "GCC",
+    "Europe",
+    "ASEAN",
+    "specific country names"
+  ],
+  "threat_actors": [
+    "BadGuy"
+  ],
+  "_threat_actors_examples": [
+    "APT28",
+    "Lazarus",
+    "FIN7",
+    "any APT known to target your sector"
+  ]
+}

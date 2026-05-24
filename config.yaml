@@ -1,0 +1,59 @@
+# CTI Aggregator — runtime configuration
+# (Connector enable/disable + cadence. Secrets live in .env)
+
+scoring:
+  threshold: 40             # IOCs with relevance_score < threshold are NOT persisted
+  keyword_points: 25        # per keyword hit (high_signal category)
+  keyword_max: 50           # cap for keyword contribution
+  tld_points: 30            # ccTLD on relevance_countries list
+  geoip_points: 20          # IP geolocates to a relevance country
+  asn_points: 25            # IP ASN on relevance_asns allow-list
+  actor_points: 30          # threat actor on threat_actors list
+  sector_combo_points: 15   # sector term + region term combo
+
+connectors:
+  # --- abuse.ch (no API key required) ---
+  abusech_threatfox:
+    enabled: true
+    interval_minutes: 30
+    rate_limit_per_sec: 1
+  abusech_urlhaus:
+    enabled: true
+    interval_minutes: 30
+    rate_limit_per_sec: 1
+  abusech_malwarebazaar:
+    enabled: true
+    interval_minutes: 60
+    rate_limit_per_sec: 1
+  abusech_feodo:
+    enabled: true
+    interval_minutes: 60
+    rate_limit_per_sec: 1
+
+  # --- OTX (requires OTX_API_KEY in .env) ---
+  otx:
+    enabled: true
+    interval_minutes: 60
+    rate_limit_per_sec: 1
+
+  # --- Spamhaus DROP / EDROP ---
+  spamhaus_drop:
+    enabled: true
+    interval_minutes: 360
+    rate_limit_per_sec: 1
+
+  # --- Emerging Threats open ruleset ---
+  emerging_threats:
+    enabled: true
+    interval_minutes: 720
+    rate_limit_per_sec: 1
+
+  # --- CIRCL / MISP public ---
+  circl_misp:
+    enabled: false      # off by default — review the public feed's terms before enabling
+    interval_minutes: 360
+    rate_limit_per_sec: 1
+
+http:
+  user_agent: "CTIAggregator/0.1 (+local-research)"
+  timeout_seconds: 30
